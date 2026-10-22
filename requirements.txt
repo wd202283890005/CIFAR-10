@@ -1,0 +1,24 @@
+# 依赖清单：由 pip freeze 导出（2026-10-22）
+# 安装：python -m pip install -r requirements.txt
+#
+# PyTorch 的 CUDA 版只存在于官方索引，清华源里是 CPU 版，
+# 所以这里把官方源作为额外索引；torch==2.5.1+cu121 这种带本地版本的
+# 包只有官方源能满足。
+--index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+
+# 数据处理与可视化
+numpy==2.4.6
+pandas==3.0.6
+pillow==12.3.0
+matplotlib==3.11.2
+scikit-learn==1.9.1
+scipy==1.17.1
+tqdm==4.70.1
+
+# 训练日志
+tensorboard==2.21.0
+tensorboard-data-server==0.7.2
