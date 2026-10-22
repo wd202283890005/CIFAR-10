@@ -53,6 +53,50 @@ python download_cifar10.py
 
 数据齐了以后，`datasets.CIFAR10(root="data", download=True)` 会直接复用本地文件，不再联网。
 
+数据集是 pickle 文件不是图片，想肉眼看就渲染一张：
+
+```powershell
+python preview_data.py            # 每类抽 10 张，输出 data/preview.png
+```
+
+## 训练
+
+采用 CIFAR-10 上沿用多年的经典配方：
+
+| 环节 | 设置 |
+| --- | --- |
+| 模型 | ResNet-18 的 CIFAR 变体（3×3 stem、去掉 maxpool），约 1115 万参数 |
+| 数据增强 | `RandomCrop(32, padding=4)` + `RandomHorizontalFlip` |
+| 归一化 | 通道均值 `(0.4914, 0.4822, 0.4465)`，标准差 `(0.2470, 0.2435, 0.2616)` |
+| 优化器 | SGD，momentum 0.9，weight decay 5e-4，初始 lr 0.1 |
+| 学习率调度 | 阶梯退火，在 50% 和 75% 的 epoch 处各降 10 倍 |
+| 精度 | CUDA 上自动启用混合精度（`--no-amp` 可关） |
+
+```powershell
+python train.py                                   # 完整 200 epoch
+python train.py --epochs 40 --workers 4           # 快速跑一版
+python train.py --model simple --epochs 10        # 两层 CNN，验证流程
+python train.py --resume checkpoints/last.pt      # 断点续训
+python train.py --resume checkpoints/best.pt --eval-only   # 只评估
+```
+
+训练过程每个 epoch 输出一行，权重和指标分别落到：
+
+- `checkpoints/best.pt`、`checkpoints/last.pt`
+- `logs/<模型>_log.csv`（每轮 loss/acc/耗时）
+- `logs/tensorboard/`（`tensorboard --logdir logs/tensorboard` 可视化）
+
+本机实测（RTX 3060 Laptop，40 epoch，`--workers 0`）：约 28 秒/轮，总耗时约 19 分钟，测试集准确率 93% 左右。用 `--workers 4` 会更快。
+
+## 预测
+
+```powershell
+python predict.py                       # 用 checkpoints/best.pt
+python predict.py --samples 200         # 多看几张
+```
+
+输出整体准确率、各类准确率，并把预测结果画成 `data/predictions.png`（绿框正确、红框错误并标出真值）。
+
 ## 依赖
 
 - `requirements.txt`：pip 侧完整依赖（由 `pip freeze` 导出）
@@ -70,11 +114,17 @@ python -m pip install torch torchvision --index-url https://download.pytorch.org
 CIFAR-10/
 ├── .conda/               # 虚拟环境（不入库）
 │   └── cifar10/
-├── data/                 # 数据集（不入库）
+├── data/                 # 数据集与生成的可视化图片（不入库）
+├── checkpoints/          # 权重（不入库）
+├── logs/                 # 训练日志与 TensorBoard（不入库）
 ├── .gitignore
 ├── env.bat               # 打开已激活环境的命令行
 ├── check_env.py          # 环境自检
+├── preview_data.py       # 数据集预览图
 ├── download_cifar10.py   # 数据集并行下载
+├── models.py             # ResNet-18/34 与简单 CNN
+├── train.py              # 训练
+├── predict.py            # 评估与预测可视化
 ├── requirements.txt
 └── README.md
 ```
