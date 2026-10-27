@@ -97,6 +97,62 @@ python predict.py --samples 200         # 多看几张
 
 输出整体准确率、各类准确率，并把预测结果画成 `data/predictions.png`（绿框正确、红框错误并标出真值）。
 
+## 用训练好的权重预测任意图片
+
+```powershell
+python infer.py --input some.jpg                  # 单张
+python infer.py --input data/web_images           # 目录（递归）
+python infer.py --input a.jpg b.jpg --mode stretch
+```
+
+会用 `checkpoints/best.pt`，打印每张图的 top-3 候选和置信度；`--out` 指定的路径会生成一张结果图（绿框正确、红框错误）。如果图片放在以类名命名的目录里（如 `.../cat/xxx.jpg`），会自动当作真值算准确率。
+
+权重本身怎么用，四步：
+
+```python
+import torch
+from torchvision import transforms
+from PIL import Image
+from models import build_model
+
+ckpt = torch.load("checkpoints/best.pt", map_location="cuda", weights_only=False)
+model = build_model(ckpt["args"]["model"]).cuda()
+model.load_state_dict(ckpt["model"])
+model.eval()
+
+tf = transforms.Compose([
+    transforms.Resize(32), transforms.CenterCrop(32),   # 对齐训练时的输入
+    transforms.ToTensor(),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
+])
+x = tf(Image.open("some.jpg").convert("RGB")).unsqueeze(0).cuda()
+with torch.no_grad():
+    prob = model(x).softmax(1)[0]
+print(prob.argmax().item(), prob.max().item())
+```
+
+两个关键点：**模型名从 checkpoint 里读**（`ckpt["args"]["model"]`），预处理必须和训练时一致（同样是 32×32、同样的均值方差），否则准确率会莫名其妙地掉。
+
+### 拿网络图片实测
+
+`fetch_web_images.py` 会从 Wikimedia Commons 按类别抓真实照片（自由版权，来源记录在 `data/web_images/sources.json`）：
+
+```powershell
+python fetch_web_images.py --per-class 2
+python infer.py --input data/web_images --out data/web_test.png
+```
+
+本机用 200 epoch（95.23%）的权重测 20 张网图，得到 17/20 = 85%：
+
+| 现象 | 说明 |
+| --- | --- |
+| 清晰主体（飞机、鸟、猫、鹿、蛙） | 98%–100% 置信，全部正确 |
+| 主体小或被遮挡（两张狗照） | 判对但置信度只有 60%–63% |
+| 失败 3 张 | 汽车被裁掉主体（判成卡车）、马是黑白线描画（判成船）、船距远在海平线上（36% 低置信判成飞机） |
+| `--mode center` vs `--mode stretch` | 85% vs 80%，前者保留长宽比，更好 |
+
+85% 明显低于测试集的 95.23%，这是 CIFAR-10 模型的固有差距：数据集里都是 32×32 的低清小图、主体占满画面，而网图是高清大图、主体比例各异，压到 32×32 后细节大量丢失。想要更好的效果只能换更大的输入分辨率重新训练，或改用 ImageNet 预训练的迁移学习。
+
 ## 依赖
 
 - `requirements.txt`：pip 侧完整依赖（由 `pip freeze` 导出）
@@ -124,7 +180,9 @@ CIFAR-10/
 ├── download_cifar10.py   # 数据集并行下载
 ├── models.py             # ResNet-18/34 与简单 CNN
 ├── train.py              # 训练
-├── predict.py            # 评估与预测可视化
+├── predict.py            # 在测试集上评估并出图
+├── infer.py              # 用权重预测任意图片
+├── fetch_web_images.py   # 从 Wikimedia 抓图做外部测试
 ├── requirements.txt
 └── README.md
 ```
